@@ -1,0 +1,35 @@
+name: Daily AI News
+
+on:
+  schedule:
+    # GitHub Actions uses UTC. 01:00 UTC is 09:00 China Standard Time.
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  send-daily-news:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch official updates and send to WeCom
+        env:
+          WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+        run: python .opencode/garying/scripts/daily_ai_news.py
+
+      - name: Save sent-item state
+        run: |
+          git config user.name "garying-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .opencode/garying/scripts/daily_ai_news_state.json
+          git diff --cached --quiet || git commit -m "chore: update daily AI news state"
+          git push
