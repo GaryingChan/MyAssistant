@@ -60,6 +60,7 @@ def save_seen(seen):
 def collect_updates(seen):
     sources = (
         ("36氪 AI", lambda: page_items("https://36kr.com/information/AI/", r'/p/[^"]+')),
+        ("36氪财经", lambda: page_items("https://36kr.com/information/ccs/", r'/p/[^"]+')),
     )
     updates = []
     discovered = set()
