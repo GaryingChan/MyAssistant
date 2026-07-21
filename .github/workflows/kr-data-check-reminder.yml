@@ -1,0 +1,28 @@
+name: Kangrun Data Check Reminder
+
+on:
+  schedule:
+    # GitHub Actions uses UTC. These are 09:10 and 14:30 China Standard Time, Monday-Friday.
+    - cron: "10 1 * * 1-5"
+    - cron: "30 6 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  remind-yuejia:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Send Kangrun data-check reminder
+        env:
+          KR_WECOM_WEBHOOK_URL: ${{ secrets.KR_WECOM_WEBHOOK_URL }}
+        run: python KR/remind_yuejia.py
