@@ -12,7 +12,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 STATE_FILE = SCRIPT_DIR / "daily_ai_news_state.json"
-MAX_ITEMS_PER_SOURCE = 3
+MAX_ITEMS_PER_SOURCE = 10
 USER_AGENT = "GaryingDailyAINews/1.0"
 
 
