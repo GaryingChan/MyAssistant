@@ -105,6 +105,63 @@ def collect_updates(seen):
     return updates, discovered, failures
 
 
+def translate_titles(updates):
+    articles = [
+        {"url": link, "title": title}
+        for _, items in updates
+        for title, link in items
+    ]
+    if not articles:
+        return updates
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+    prompt = (
+        "Translate every news title into concise Simplified Chinese. Preserve product "
+        "and company names such as OpenAI, Claude, Anthropic, and Kimi. Return only "
+        "JSON in this shape: {\"translations\":[{\"url\":\"...\",\"title\":\"...\"}]}. "
+        "Include every input URL exactly once.\n\n"
+        + json.dumps(articles, ensure_ascii=False)
+    )
+    payload = json.dumps(
+        {
+            "model": os.environ.get("OPENAI_NEWS_MODEL", "gpt-4.1-mini"),
+            "messages": [
+                {"role": "system", "content": "You translate AI industry news headlines accurately."},
+                {"role": "user", "content": prompt},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    translated = json.loads(result["choices"][0]["message"]["content"])
+    titles = {
+        item["url"]: item["title"].strip()
+        for item in translated.get("translations", [])
+        if item.get("url") and item.get("title")
+    }
+    missing = [article["url"] for article in articles if article["url"] not in titles]
+    if missing:
+        raise RuntimeError("OpenAI translation response omitted one or more articles")
+    return [
+        (source, [(titles[link], link) for _, link in items])
+        for source, items in updates
+    ]
+
+
 def format_message(updates, failures):
     lines = [f"# 每日 AI 动态 | {datetime.now():%Y-%m-%d}"]
     item_count = 0
@@ -149,6 +206,7 @@ def main():
 
     seen = load_seen()
     updates, discovered, failures = collect_updates(seen)
+    updates = translate_titles(updates)
     message = format_message(updates, failures)
     if args.dry_run:
         print(message)
