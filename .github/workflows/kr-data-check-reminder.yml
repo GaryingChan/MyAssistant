@@ -25,4 +25,5 @@ jobs:
       - name: Send Kangrun data-check reminder
         env:
           KR_WECOM_WEBHOOK_URL: ${{ secrets.KR_WECOM_WEBHOOK_URL }}
+          KR_YUEJIA_MOBILE: ${{ secrets.KR_YUEJIA_MOBILE }}
         run: python KR/remind_yuejia.py
