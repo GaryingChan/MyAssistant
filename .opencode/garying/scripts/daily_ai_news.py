@@ -93,24 +93,45 @@ def format_message(updates, failures):
     return "\n".join(lines)
 
 
+def split_message(content, max_bytes=3800):
+    chunks = []
+    current_lines = []
+    current_size = 0
+    for line in content.splitlines():
+        line_size = len((line + "\n").encode("utf-8"))
+        if current_lines and current_size + line_size > max_bytes:
+            chunks.append("\n".join(current_lines))
+            current_lines = ["# 每日资讯（续）", line]
+            current_size = len((current_lines[0] + "\n" + line + "\n").encode("utf-8"))
+        else:
+            current_lines.append(line)
+            current_size += line_size
+    if current_lines:
+        chunks.append("\n".join(current_lines))
+    return chunks
+
+
 def send_to_wecom(content):
     webhook = os.environ.get("WECOM_WEBHOOK_URL")
     if not webhook:
         raise RuntimeError("WECOM_WEBHOOK_URL is not configured")
-    payload = json.dumps(
-        {"msgtype": "markdown_v2", "markdown_v2": {"content": content}},
-        ensure_ascii=False,
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        webhook,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        result = json.loads(response.read().decode("utf-8"))
-    if result.get("errcode") != 0:
-        raise RuntimeError(f"WeCom API error: {result.get('errcode')}")
+    for chunk in split_message(content):
+        payload = json.dumps(
+            {"msgtype": "markdown_v2", "markdown_v2": {"content": chunk}},
+            ensure_ascii=False,
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            webhook,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        if result.get("errcode") != 0:
+            raise RuntimeError(
+                f"WeCom API error {result.get('errcode')}: {result.get('errmsg', 'unknown error')}"
+            )
 
 
 def main():
