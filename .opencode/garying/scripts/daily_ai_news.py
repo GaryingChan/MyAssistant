@@ -1,4 +1,4 @@
-"""Send newly published official AI updates to the configured WeCom webhook."""
+"""Send newly published 36Kr AI updates to the configured WeCom webhook."""
 
 import argparse
 import html
@@ -6,7 +6,6 @@ import json
 import os
 import re
 import urllib.request
-import xml.etree.ElementTree as element_tree
 from datetime import datetime
 from pathlib import Path
 
@@ -28,17 +27,6 @@ def clean_text(value):
     return re.sub(r"\s+", " ", html.unescape(value)).strip()
 
 
-def rss_items(url):
-    root = element_tree.fromstring(fetch(url))
-    items = []
-    for item in root.findall(".//item"):
-        title = clean_text(item.findtext("title") or "")
-        link = (item.findtext("link") or "").strip()
-        if title and link:
-            items.append((title, link))
-    return items
-
-
 def page_items(url, link_pattern):
     page = fetch(url)
     items = []
@@ -51,22 +39,6 @@ def page_items(url, link_pattern):
         if title and link not in seen:
             seen.add(link)
             items.append((title, link))
-    return items
-
-
-def kimi_items():
-    url = "https://www.kimi.com/blog/"
-    page = fetch(url)
-    items = []
-    seen = set()
-    for match in re.finditer(r'href="((?:https://www\.kimi\.com)?/blog/[^"]+)"', page):
-        link = urllib.request.urljoin(url, match.group(1))
-        if link in seen:
-            continue
-        seen.add(link)
-        slug = link.rstrip("/").rsplit("/", 1)[-1]
-        title = re.sub(r"[-_]", " ", slug).title()
-        items.append((title, link))
     return items
 
 
@@ -87,9 +59,7 @@ def save_seen(seen):
 
 def collect_updates(seen):
     sources = (
-        ("OpenAI", lambda: rss_items("https://openai.com/news/rss.xml")),
-        ("Claude / Anthropic", lambda: page_items("https://www.anthropic.com/news", r'/(?:news|features)/[^"]+')),
-        ("Kimi", kimi_items),
+        ("36氪 AI", lambda: page_items("https://36kr.com/information/AI/", r'/p/[^"]+')),
     )
     updates = []
     discovered = set()
@@ -103,63 +73,6 @@ def collect_updates(seen):
         except Exception as error:
             failures.append(f"{name}: {type(error).__name__}")
     return updates, discovered, failures
-
-
-def translate_titles(updates):
-    articles = [
-        {"url": link, "title": title}
-        for _, items in updates
-        for title, link in items
-    ]
-    if not articles:
-        return updates
-
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not configured")
-    prompt = (
-        "Translate every news title into concise Simplified Chinese. Preserve product "
-        "and company names such as OpenAI, Claude, Anthropic, and Kimi. Return only "
-        "JSON in this shape: {\"translations\":[{\"url\":\"...\",\"title\":\"...\"}]}. "
-        "Include every input URL exactly once.\n\n"
-        + json.dumps(articles, ensure_ascii=False)
-    )
-    payload = json.dumps(
-        {
-            "model": os.environ.get("OPENAI_NEWS_MODEL", "gpt-4.1-mini"),
-            "messages": [
-                {"role": "system", "content": "You translate AI industry news headlines accurately."},
-                {"role": "user", "content": prompt},
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0,
-        },
-        ensure_ascii=False,
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        result = json.loads(response.read().decode("utf-8"))
-    translated = json.loads(result["choices"][0]["message"]["content"])
-    titles = {
-        item["url"]: item["title"].strip()
-        for item in translated.get("translations", [])
-        if item.get("url") and item.get("title")
-    }
-    missing = [article["url"] for article in articles if article["url"] not in titles]
-    if missing:
-        raise RuntimeError("OpenAI translation response omitted one or more articles")
-    return [
-        (source, [(titles[link], link) for _, link in items])
-        for source, items in updates
-    ]
 
 
 def format_message(updates, failures):
@@ -206,7 +119,6 @@ def main():
 
     seen = load_seen()
     updates, discovered, failures = collect_updates(seen)
-    updates = translate_titles(updates)
     message = format_message(updates, failures)
     if args.dry_run:
         print(message)

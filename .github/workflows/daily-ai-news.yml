@@ -25,7 +25,6 @@ jobs:
       - name: Fetch official updates and send to WeCom
         env:
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python .opencode/garying/scripts/daily_ai_news.py
 
       - name: Save sent-item state
