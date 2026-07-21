@@ -2,9 +2,9 @@ name: Daily AI News
 
 on:
   schedule:
-    # GitHub Actions uses UTC. Run at 09:10 China Standard Time to avoid
-    # the scheduler congestion that commonly affects jobs scheduled on the hour.
+    # GitHub Actions uses UTC. Run at 09:10 and 17:30 China Standard Time.
     - cron: "10 1 * * *"
+    - cron: "30 9 * * *"
   workflow_dispatch:
 
 permissions:
