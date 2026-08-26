@@ -1,4 +1,4 @@
-"""Send newly published 36Kr AI updates to the configured WeCom webhook."""
+"""Send newly published AI updates from RSS feeds to the configured WeCom webhook."""
 
 import argparse
 import html
@@ -6,20 +6,38 @@ import json
 import os
 import re
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 STATE_FILE = SCRIPT_DIR / "daily_ai_news_state.json"
-MAX_ITEMS_PER_SOURCE = 20
+MAX_ITEMS_PER_SOURCE = 10
 USER_AGENT = "GaryingDailyAINews/1.0"
+AI_KEYWORDS = (
+    "ai",
+    "人工智能",
+    "大模型",
+    "模型",
+    "智能体",
+    "agent",
+    "openai",
+    "anthropic",
+    "deepseek",
+    "通义",
+    "豆包",
+    "生成式",
+)
 
 
 def fetch(url):
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=30) as response:
-        return response.read().decode("utf-8", errors="replace")
+        page = response.read().decode("utf-8", errors="replace")
+    if "_wafchallengeid" in page or "正在进行安全检测" in page:
+        raise RuntimeError("36Kr returned a WAF challenge page")
+    return page
 
 
 def clean_text(value):
@@ -27,15 +45,27 @@ def clean_text(value):
     return re.sub(r"\s+", " ", html.unescape(value)).strip()
 
 
-def page_items(url, link_pattern):
-    page = fetch(url)
+def rss_items(url, keywords=()):
+    feed = fetch(url)
+    root = ET.fromstring(feed)
     items = []
     seen = set()
-    for match in re.finditer(r'href="(' + link_pattern + r')"[^>]*>(.*?)</a>', page, re.DOTALL):
-        path, label = match.groups()
-        heading = re.search(r"<h[1-6][^>]*>(.*?)</h[1-6]>", label, re.DOTALL)
-        title = clean_text(heading.group(1) if heading else label)
-        link = urllib.request.urljoin(url, path)
+    rss_entries = root.findall("./channel/item")
+    atom_entries = root.findall("{http://www.w3.org/2005/Atom}entry")
+    for entry in rss_entries + atom_entries:
+        title = entry.findtext("title", default="")
+        if not title:
+            title = entry.findtext("{http://www.w3.org/2005/Atom}title", default="")
+        title = clean_text(title)
+        link = entry.findtext("link", default="")
+        if not link:
+            atom_link = entry.find("{http://www.w3.org/2005/Atom}link[@rel='alternate']")
+            if atom_link is None:
+                atom_link = entry.find("{http://www.w3.org/2005/Atom}link")
+            link = atom_link.get("href", "") if atom_link is not None else ""
+        haystack = title.lower()
+        if keywords and not any(keyword in haystack for keyword in keywords):
+            continue
         if title and link not in seen:
             seen.add(link)
             items.append((title, link))
@@ -59,8 +89,11 @@ def save_seen(seen):
 
 def collect_updates(seen):
     sources = (
-        ("36氪 AI", lambda: page_items("https://36kr.com/information/AI/", r'/p/[^"]+')),
-        ("36氪财经", lambda: page_items("https://36kr.com/information/ccs/", r'/p/[^"]+')),
+        ("InfoQ AI", lambda: rss_items("https://www.infoq.cn/feed", AI_KEYWORDS)),
+        ("IT之家 AI", lambda: rss_items("https://www.ithome.com/rss/", AI_KEYWORDS)),
+        ("TechCrunch AI", lambda: rss_items("https://techcrunch.com/category/artificial-intelligence/feed/")),
+        ("The Verge AI", lambda: rss_items("https://www.theverge.com/rss/ai-artificial-intelligence/index.xml")),
+        ("Hugging Face", lambda: rss_items("https://huggingface.co/blog/feed.xml")),
     )
     updates = []
     discovered = set()
@@ -72,7 +105,7 @@ def collect_updates(seen):
             updates.append((name, fresh))
             discovered.update(link for _, link in fresh)
         except Exception as error:
-            failures.append(f"{name}: {type(error).__name__}")
+            failures.append(f"{name}: {error}")
     return updates, discovered, failures
 
 
@@ -146,6 +179,8 @@ def main():
         print(message)
         return
     send_to_wecom(message)
+    if failures and not updates:
+        raise RuntimeError("All news sources failed; sent a failure notification without updating state")
     save_seen(seen | discovered)
     print("Daily AI news sent successfully")
 
