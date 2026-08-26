@@ -91,9 +91,9 @@ def collect_updates(seen):
     sources = (
         ("InfoQ AI", lambda: rss_items("https://www.infoq.cn/feed", AI_KEYWORDS)),
         ("IT之家 AI", lambda: rss_items("https://www.ithome.com/rss/", AI_KEYWORDS)),
-        ("TechCrunch AI", lambda: rss_items("https://techcrunch.com/category/artificial-intelligence/feed/")),
-        ("The Verge AI", lambda: rss_items("https://www.theverge.com/rss/ai-artificial-intelligence/index.xml")),
-        ("Hugging Face", lambda: rss_items("https://huggingface.co/blog/feed.xml")),
+        ("量子位", lambda: rss_items("https://www.qbitai.com/feed")),
+        ("极客公园 AI", lambda: rss_items("https://www.geekpark.net/rss", AI_KEYWORDS)),
+        ("雷峰网 AI", lambda: rss_items("https://www.leiphone.com/feed", AI_KEYWORDS)),
     )
     updates = []
     discovered = set()
