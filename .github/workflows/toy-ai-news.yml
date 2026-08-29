@@ -1,0 +1,40 @@
+name: AI Toy Industry News
+
+on:
+  schedule:
+    # GitHub Actions uses UTC. Run at 09:00 and 18:00 China Standard Time.
+    - cron: "0 1 * * *"
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: toy-ai-news
+  cancel-in-progress: false
+
+jobs:
+  send-toy-ai-news:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch AI toy industry news and send to WeCom
+        env:
+          TOY_AI_NEWS_WECOM_WEBHOOK_URL: ${{ secrets.TOY_AI_NEWS_WECOM_WEBHOOK_URL }}
+        run: python .opencode/garying/scripts/toy_ai_news.py
+
+      - name: Save sent-item state
+        run: |
+          git config user.name "garying-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .opencode/garying/scripts/toy_ai_news_state.json
+          git diff --cached --quiet || git commit -m "chore: update AI toy news state"
+          git push
