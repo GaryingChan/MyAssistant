@@ -26,6 +26,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install news URL decoder
+        run: python -m pip install --disable-pip-version-check "googlenewsdecoder==0.1.7"
+
       - name: Fetch AI toy industry news and send to WeCom
         env:
           TOY_AI_NEWS_WECOM_WEBHOOK_URL: ${{ secrets.TOY_AI_NEWS_WECOM_WEBHOOK_URL }}

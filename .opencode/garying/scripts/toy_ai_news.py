@@ -11,12 +11,18 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
+from googlenewsdecoder import gnewsdecoder
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 STATE_FILE = SCRIPT_DIR / "toy_ai_news_state.json"
-MAX_ITEMS = 15
-USER_AGENT = "GaryingToyAINews/1.0"
+MAX_ITEMS = 8
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+)
 QUERY = "(人工智能 OR AI OR 大模型 OR 智能体 OR 机器人) (玩具 OR 智能玩具 OR 陪伴玩具 OR 机器人玩具 OR 潮玩)"
+UNSAFE_TERMS = ("外围", "赌博", "博彩", "色情", "成人", "zxj3.com")
 
 
 def fetch(url):
@@ -41,6 +47,21 @@ def google_news_url():
     )
 
 
+def decode_google_link(link):
+    result = gnewsdecoder(link)
+    if not result.get("status"):
+        raise RuntimeError(result.get("message", "Google News URL decoding failed"))
+    return result["decoded_url"]
+
+
+def is_safe_article(title, link):
+    parsed = urllib.parse.urlparse(link)
+    text = f"{title} {link}".lower()
+    return parsed.scheme in {"http", "https"} and not any(
+        term in text for term in UNSAFE_TERMS
+    )
+
+
 def collect_items():
     root = ET.fromstring(fetch(google_news_url()))
     items = []
@@ -51,7 +72,16 @@ def collect_items():
         if title and link and link not in seen:
             seen.add(link)
             items.append((title, link))
-    return items[:MAX_ITEMS]
+    items = items[:MAX_ITEMS]
+    decoded_items = []
+    for title, link in items:
+        try:
+            decoded_items.append((title, decode_google_link(link)))
+        except Exception:
+            continue
+    if not decoded_items:
+        raise RuntimeError("Google News could not decode any original article URLs")
+    return [(title, link) for title, link in decoded_items if is_safe_article(title, link)]
 
 
 def load_seen():
