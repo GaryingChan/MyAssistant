@@ -1,6 +1,7 @@
 """Send AI toy industry news from Google News RSS to a WeCom webhook."""
 
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -84,17 +85,26 @@ def collect_items():
     return [(title, link) for title, link in decoded_items if is_safe_article(title, link)]
 
 
-def load_seen():
+def load_seen(webhook_fingerprint):
     try:
         data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        if data.get("webhook_fingerprint") != webhook_fingerprint:
+            return set()
         return set(data.get("seen_urls", []))
     except (FileNotFoundError, json.JSONDecodeError):
         return set()
 
 
-def save_seen(seen):
+def save_seen(seen, webhook_fingerprint):
     STATE_FILE.write_text(
-        json.dumps({"seen_urls": sorted(seen)}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {
+                "webhook_fingerprint": webhook_fingerprint,
+                "seen_urls": sorted(seen),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
@@ -128,10 +138,14 @@ def split_message(content, max_bytes=3800):
     return chunks
 
 
-def send_to_wecom(content):
+def configured_webhook():
     webhook = os.environ.get("TOY_AI_NEWS_WECOM_WEBHOOK_URL")
     if not webhook:
         raise RuntimeError("TOY_AI_NEWS_WECOM_WEBHOOK_URL is not configured")
+    return webhook
+
+
+def send_to_wecom(content, webhook):
     for chunk in split_message(content):
         payload = json.dumps(
             {"msgtype": "markdown_v2", "markdown_v2": {"content": chunk}},
@@ -156,7 +170,11 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    seen = load_seen()
+    webhook = None if args.dry_run else configured_webhook()
+    webhook_fingerprint = (
+        hashlib.sha256(webhook.encode("utf-8")).hexdigest() if webhook else None
+    )
+    seen = load_seen(webhook_fingerprint)
     try:
         items = collect_items()
     except Exception as error:
@@ -164,7 +182,7 @@ def main():
         if args.dry_run:
             print(message)
             return
-        send_to_wecom(message)
+        send_to_wecom(message, webhook)
         raise RuntimeError("News collection failed; sent a failure notification without updating state")
 
     fresh = [(title, link) for title, link in items if link not in seen]
@@ -172,8 +190,8 @@ def main():
     if args.dry_run:
         print(message)
         return
-    send_to_wecom(message)
-    save_seen(seen | {link for _, link in fresh})
+    send_to_wecom(message, webhook)
+    save_seen(seen | {link for _, link in fresh}, webhook_fingerprint)
     print("AI toy industry news sent successfully")
 
 
