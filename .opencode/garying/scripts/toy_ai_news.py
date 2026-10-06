@@ -23,7 +23,16 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 )
 QUERY = "(人工智能 OR AI OR 大模型 OR 智能体 OR 机器人) (玩具 OR 智能玩具 OR 陪伴玩具 OR 机器人玩具 OR 潮玩)"
-UNSAFE_TERMS = ("外围", "赌博", "博彩", "色情", "成人", "zxj3.com")
+UNSAFE_TERMS = (
+    "外围",
+    "赌博",
+    "博彩",
+    "色情",
+    "成人",
+    "出轨记录",
+    "微信定位",
+    "zxj3.com",
+)
 
 
 def fetch(url):
@@ -57,7 +66,7 @@ def decode_google_link(link):
 
 def is_safe_article(title, link):
     parsed = urllib.parse.urlparse(link)
-    text = f"{title} {link}".lower()
+    text = f"{title} {urllib.parse.unquote(link)}".lower()
     return parsed.scheme in {"http", "https"} and not any(
         term in text for term in UNSAFE_TERMS
     )
